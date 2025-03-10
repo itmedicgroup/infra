@@ -5,14 +5,14 @@
 replicaCount: 1
 
 image:
-  repository: harbor.cuonghomelab.one/hrms-v2-backend/backend
+  repository: harbor.cuonghomelab.one/hrms-v2-dev-backend/backend
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "dev-0.8"
+  tag: "dev-0.9"
 
 imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
+# nameOverride: ""
+# fullnameOverride: ""
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -65,8 +65,8 @@ resources:
   # resources, such as Minikube. If you do want to specify resources, uncomment the following
   # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   limits:
-    cpu: 10
-    memory: 8192Mi
+    cpu: 2
+    memory: 2Gi
   requests:
     cpu: 100m
     memory: 256Mi
@@ -86,6 +86,128 @@ affinity: {}
 
 persistence:
   enabled: true
-  size: 10Gi
+  size: 5Gi
   storageClass: longhorn-storage-delete
   mountPath: /app/dist/.temp
+
+dependencies:
+  redis:
+    enabled: true
+    condition: redis.enabled
+  rabbitmq:
+    enabled: true
+    condition: rabbitmq.enabled
+  postgresql:
+    enabled: true
+    condition: postgresql.enabled
+  minio:
+    enabled: true
+    condition: minio.enabled
+
+redis:
+  architecture: "standalone"
+  global:
+    defaultStorageClass: "longhorn-storage-retain"
+    redis:
+      password: "Admin123"
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+rabbitmq:
+  persistence:
+    storageClass: "longhorn-storage-retain"
+    size: 1Gi
+  auth:
+    username: "admin"
+    password: "Admin123"
+    erlangCookie: secretcookie
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 300m
+    limits:
+      memory: 1Gi
+      cpu: "1"
+
+postgresql:
+  global:
+    storageClass: "longhorn-storage-retain"
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: "1"
+    limits:
+      memory: 2Gi
+      cpu: "2"
+  auth:
+    enablePostgresUser: true
+    postgresPassword: Admin123
+    username: admin
+    password: Admin123
+    database: database
+  primary:
+    persistence:
+      existingClaim: "data-{{ .Release.Name }}-postgresql-0"
+      storageClass: "longhorn-storage-retain"
+      size: 8Gi
+  readReplicas:
+    persistence:
+      enabled: false
+      storageClass: "longhorn-storage-retain"
+      size: 8Gi
+
+minio:
+  auth:
+    rootUser: "admin"
+    rootPassword: "Admin123"
+    forceNewKeys: true
+
+  mode:
+    standalone # hoặc distributed
+
+
+  # Thêm cấu hình API endpoint
+  # extraEnvVars:
+  #   - name: MINIO_SERVER_URL
+  #     value: "http://localhost:9000" # URL khi port-forward
+  #   - name: MINIO_BROWSER_REDIRECT_URL
+  #     value: "http://localhost:9001" # Console URL khi port-forward
+
+  service:
+    type: LoadBalancer
+    loadBalancerIP: 192.168.1.229
+    ports:
+      api: 9000
+      console: 9001
+
+  persistence:
+    storageClass: "longhorn-storage-retain"
+    size: 5Gi
+    existingClaim: "{{ .Release.Name }}-minio"
+
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+
+  # ingress:
+  #   enabled: false
+  #   hostname: minio.your-domain.com
+  #   annotations:
+  #     kubernetes.io/ingress.class: nginx
+  #   tls: true
+
+  # apiIngress:
+  #   enabled: false
+  #   hostname: minio-api.your-domain.com
+  #   annotations:
+  #     kubernetes.io/ingress.class: nginx
+  #   tls: true

@@ -30,6 +30,16 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       # Thêm initContainer để tạo thư mục .temp
       initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.28
+          command: ['sh', '-c', '
+            until nc -z -w 2 {{ .Release.Name }}-redis-master 6379 && 
+                  nc -z -w 2 {{ .Release.Name }}-rabbitmq 5672 &&
+                  nc -z -w 2 {{ .Release.Name }}-postgresql 5432 &&
+                  nc -z -w 2 {{ .Release.Name }}-minio 9000;
+            do echo "waiting for dependencies"; sleep 2;
+            done;
+          ']
         - name: init-temp-dir
           image: busybox
           command: ['sh', '-c', 'mkdir -p /app/dist/.temp']
@@ -45,7 +55,7 @@ spec:
            # Thêm volumeMounts vào container chính
           volumeMounts:
             - name: temp-storage
-              mountPath: /app/dist/.temp
+              mountPath: {{ .Values.persistence.mountPath }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
@@ -86,7 +96,7 @@ spec:
             - name: DATABASE_NAME
               value: database
             - name: POSTGRES_URI
-              value: postgres://postgres:Admin123@hrms-db:5432/database?schema=public
+              value: postgres://postgres:Admin123@{{ .Release.Name }}-postgresql-hl:5432/database?schema=public
             - name: JWT_ACCESS_TOKEN_EXPIRATION_TIME
               value: "7200"
             - name: JWT_REFRESH_TOKEN_EXPIRATION_TIME
@@ -94,9 +104,12 @@ spec:
             - name: REDIS_PORT
               value: "6379"
             - name: REDIS_HOST
-              value: redis-master
+              value: {{ .Release.Name }}-redis-master
             - name: REDIS_PASSWORD
-              value: Admin123
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis
+                  key: redis-password
             - name: MULTER_DEST
               value: "./upload"
             - name: MAX_SIZE_PER_FILE_UPLOAD
@@ -104,25 +117,35 @@ spec:
             - name: MAX_NUMBER_FILE_UPLOAD
               value: "1"
             - name: MINIO_ENDPOINT
-              value: 192.168.1.223
+              value: {{ .Values.minio.service.loadBalancerIP }}
             - name: MINIO_PORT
               value: "80"
             - name: MINIO_ACCESS_KEY
-              value: accesskey2
+              value: {{ .Values.minio.auth.rootUser }}
             - name: MINIO_SECRET_KEY
-              value: secretkey2
+              value: {{ .Values.minio.auth.rootPassword }}
             - name: MINIO_REGION
               value: ap-southeast-1
             - name: RABBITMQ_URL
-              value: amqp://admin:Admin123@rabbitmq-headless:5672
+              value: amqp://admin:Admin123@{{ .Release.Name }}-rabbitmq-headless:5672
           livenessProbe:
             httpGet:
               path: /api/v1
               port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /api/v1
               port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 30  # Cho phép tổng 5 phút để khởi động
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

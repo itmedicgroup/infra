@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: harbor.cuonghomelab.one/hrms-v2-frontend/frontend
+  repository: harbor.cuonghomelab.one/hrms-v2-dev-frontend/frontend
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: "dev-0.4"
