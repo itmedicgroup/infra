@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hrms-v2-backend.fullname" . }}
+  labels:
+    {{- include "hrms-v2-backend.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "hrms-v2-backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "hrms-v2-backend.selectorLabels" . | nindent 8 }}
+        storage: temp
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "hrms-v2-backend.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Thêm initContainer để tạo thư mục .temp
+      initContainers:
+        - name: init-temp-dir
+          image: busybox
+          command: ['sh', '-c', 'mkdir -p /app/dist/.temp']
+          volumeMounts:
+            - name: temp-storage
+              mountPath: /app/dist/.temp
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+           # Thêm volumeMounts vào container chính
+          volumeMounts:
+            - name: temp-storage
+              mountPath: /app/dist/.temp
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env: 
+            - name: COOKIE_SECRET
+              value: u17rR4Myg46
+            - name: ACCESS_TOKEN_SECRET
+              value: aFuckingAcccessTokenKey
+            - name: ACCESS_LEARNING_LESSON_SECRET_KEY
+              value: HelloAhihihi
+            - name: REFRESH_TOKEN_SECRET
+              value: aFuckingRefreshTokenKey
+            - name: PORT
+              value: "3000"
+            - name: NODE_ENV
+              value: development
+            - name: APP_NAME
+              value: hrms-api-v2
+            - name: APP_DESCRIPTION
+              value: "API Docs"
+            - name: APP_VERSION
+              value: "1" 
+            - name: SWAGGER_USERNAME
+              value: admin
+            - name: SWAGGER_PASSWORD
+              value: Admin123
+            - name: DATABASE_USERNAME
+              value: posgres
+            - name: DATABASE_PASSWORD
+              value: Admin123
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_PREFIX
+              value: postgres
+            - name: DATABASE_HOST
+              value: hrms-db
+            - name: DATABASE_NAME
+              value: database
+            - name: POSTGRES_URI
+              value: postgres://postgres:Admin123@hrms-db:5432/database?schema=public
+            - name: JWT_ACCESS_TOKEN_EXPIRATION_TIME
+              value: "7200"
+            - name: JWT_REFRESH_TOKEN_EXPIRATION_TIME
+              value: "25200"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_HOST
+              value: redis-master
+            - name: REDIS_PASSWORD
+              value: Admin123
+            - name: MULTER_DEST
+              value: "./upload"
+            - name: MAX_SIZE_PER_FILE_UPLOAD
+              value: "35000000"
+            - name: MAX_NUMBER_FILE_UPLOAD
+              value: "1"
+            - name: MINIO_ENDPOINT
+              value: 192.168.1.223
+            - name: MINIO_PORT
+              value: "80"
+            - name: MINIO_ACCESS_KEY
+              value: accesskey2
+            - name: MINIO_SECRET_KEY
+              value: secretkey2
+            - name: MINIO_REGION
+              value: ap-southeast-1
+            - name: RABBITMQ_URL
+              value: amqp://admin:Admin123@rabbitmq-headless:5672
+          livenessProbe:
+            httpGet:
+              path: /api/v1
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /api/v1
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Thêm volumes
+      volumes:
+        - name: temp-storage
+          persistentVolumeClaim:
+            claimName: {{ include "hrms-v2-backend.storage.name" . }}
